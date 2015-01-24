@@ -1,0 +1,154 @@
+---
+title: "PracticalMachineLearning"
+author: "ceeka"
+date: "Saturday, January 24, 2015"
+output: html_document
+---
+Background
+
+Using devices such as Jawbone Up, Nike FuelBand, and Fitbit it is now possible to collect a large amount of data about personal activity relatively inexpensively. These type of devices are part of the quantified self movement - a group of enthusiasts who take measurements about themselves regularly to improve their health, to find patterns in their behavior, or because they are tech geeks. One thing that people regularly do is quantify how much of a particular activity they do, but they rarely quantify how well they do it. In this project, your goal will be to use data from accelerometers on the belt, forearm, arm, and dumbell of 6 participants. They were asked to perform barbell lifts correctly and incorrectly in 5 different ways. More information is available from the website here: http://groupware.les.inf.puc-rio.br/har (see the section on the Weight Lifting Exercise Dataset). 
+
+Data 
+
+
+The training data for this project are available here: 
+
+https://d396qusza40orc.cloudfront.net/predmachlearn/pml-training.csv
+
+The test data are available here: 
+
+https://d396qusza40orc.cloudfront.net/predmachlearn/pml-testing.csv
+
+The data for this project come from this source: http://groupware.les.inf.puc-rio.br/har. 
+
+
+```{r}
+setwd("C:/Users/Karthik/Documents/R")
+```
+
+
+```{r}
+#Importing the required libraries
+library(ElemStatLearn)
+library(caret)
+library(rpart)
+library(randomForest)
+```
+
+
+```{r}
+#Reading the data
+data <- read.csv("pml-training.csv",header=TRUE, sep=",", na.strings=c("NA",""))
+dataTest <- read.csv("pml-testing.csv",header=TRUE, sep=",", na.strings=c("NA",""))
+data <- data[ , colSums(is.na(data)) == 0]
+```
+
+```{r}
+#Checking the dimensions of Data
+dim(data)
+head(data)
+```
+
+```{r}
+#Removing variable that are not required
+drop <- c('X','user_name','raw_timestamp_part_1','raw_timestamp_part_2','cvtd_timestamp','new_window','num_window')
+data <- data[,!(names(data) %in% drop)]
+```
+
+```{r}
+#Find highly correlated variable and remove
+new_data <- cor(na.omit(data[sapply(data, is.numeric)]))
+removeHighlyCorr = findCorrelation(new_data, cutoff = .90, verbose = TRUE)
+data <- data[,-removeHighlyCorr]
+dim(data)
+```
+
+```{r}
+#Creating Data partition
+inTrain = createDataPartition(data$classe,p=0.6,list=FALSE)
+trainTree <- data[inTrain,]
+dim(trainTree)
+testTree <- data[-inTrain,]
+```
+
+```{r}
+#CART 
+#Using Tree package
+library(tree)
+set.seed(1232)
+fit <- train(classe~.,method="rpart",data=trainTree)
+```
+  
+
+```{r}
+#Plotting tree
+library(rattle)
+fancyRpartPlot(fit$finalModel)
+```
+
+Using Tree package summarizing the confusion matrix
+```{r}
+tree.train = tree(classe~.,data=trainTree)
+summary(tree.train)
+tree.pred=predict(tree.train,testTree,type="class")
+predTab = with(testTree,table(tree.pred,classe))
+sum(diag(predTab))/sum(as.vector(predTab)) # error rate
+```
+
+Pruning Tree
+```{r}
+cv.train = cv.tree(tree.train,FUN=prune.misclass)
+cv.train
+plot(cv.train)
+```
+Pruning at size 20
+```{r}
+prune.train=prune.misclass(tree.train,best=10)
+tree.pred=predict(prune.train,testTree,type="class")
+predMatrix = with(testTree,table(tree.pred,classe))
+sum(diag(predMatrix))/sum(as.vector(predMatrix)) # error rate
+```
+
+```{r}
+#Using Random Forest
+require(randomForest)
+set.seed(123451)
+rf.train <- randomForest(classe~.,data=trainTree,nTree=100,importance=TRUE)
+rf.train
+```
+
+```{r}
+#Plotting Rf
+varImpPlot(rf.train)
+importance(rf.train)
+```
+
+```{r}
+#Predicting RandomForest Accuracy
+rf.pred=predict(rf.train,testTree,type="class")
+predRFTab = with(testTree,table(rf.pred,classe))
+sum(diag(predRFTab))/sum(as.vector(predRFTab)) # error rate
+```
+
+```{r}
+#Conclusion
+prediction <- predict(rf.train, dataTest)
+prediction
+```
+
+To Generate 20 different files of test set prediction
+```{r}
+pml_write_files = function(x){
+  n = length(x)
+  for(i in 1:n){
+    filename = paste0("problem_id_",i,".txt")
+    write.table(x[i],file=filename,quote=FALSE,row.names=FALSE,col.names=FALSE)
+  }
+}
+
+pml_write_files(prediction)
+```
+
+```{r}
+```
+Note that the `echo = FALSE` parameter was added to the code chunk to prevent printing of the R code that generated the plot.
